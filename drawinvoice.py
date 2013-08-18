@@ -22,18 +22,6 @@ class Extract:
 Line = namedtuple("Line", 
         ('position', 'name', 'quantity', 'units', 'price', 'amount'))
 
-def spellTotal(total):
-    template = u"{rubles} {kopnum:02d} {kopstr}"
-    from pytils import numeral
-    n = {}
-    n['rubles'] = numeral.rubles(int(total)).capitalize()
-    n['kopnum'] = int(total * 100) - int(total)*100
-    n['kopstr'] = numeral.choose_plural(
-            n['kopnum'], 
-            (u"копейка", u"копейки", u"копеек")
-            )
-    return template.format(**n)
-
 
 class Parameters: pass
 
@@ -92,7 +80,7 @@ class InvoiceDataMixin:
     def getDue(self, goods):
         return None
 
-debug = True
+debug = False
 
 class Invoice(InvoiceDataMixin):
     """draws the invoice"""
@@ -108,8 +96,8 @@ class Invoice(InvoiceDataMixin):
         p.baseFont = "Arial"
         p.tablePadding = 1
         p.normalSize = 9
-        p.minSize = 7
-        p.bigSize = 12
+        p.minSize = 8
+        p.bigSize = 14
 
         p.firstFrameWidth = 175*mm
         p.firstFrameHeight = 210*mm
@@ -117,6 +105,11 @@ class Invoice(InvoiceDataMixin):
 
         p.normalStyle = getSampleStyleSheet()['Normal']
         p.normalStyle.fontName = p.baseFont
+
+        p.minStyle = getSampleStyleSheet()['Normal']
+        p.minStyle.fontName = p.baseFont
+        p.minStyle.fontSize = p.minSize
+        p.minStyle.leading = p.minSize * 1.2
 
         self.param = p
         self.setupDoc()
@@ -129,15 +122,37 @@ class Invoice(InvoiceDataMixin):
                 {address}, тел.: {tel}</b>""" 
 
         def itemTemplate(item):
+            pStyle = self.param.minStyle
             return Line(
                     item.position,
-                    item.name,
+                    Paragraph(item.name, pStyle),
                     "{:d}".format(item.quantity),
                     item.units,
                     "{:.2f}".format(item.price),
                     "{:.2f}".format(item.amount)
                     )
         self.templates.itemTemplate = itemTemplate
+
+        self.templates.amountTemplate = lambda amount, due: Paragraph(
+                u"Всего наименований {amount}, на сумму {due:.2f} руб.".format(
+                    amount=amount, due=due), self.param.normalStyle)
+
+        def spellTotal(total):
+            template = u"{rubles} {kopnum:02d} {kopstr}"
+            from pytils import numeral
+            n = {}
+            n['rubles'] = numeral.rubles(int(total)).capitalize()
+            n['kopnum'] = int(total * 100) - int(total)*100
+            n['kopstr'] = numeral.choose_plural(
+                    n['kopnum'], 
+                    (u"копейка", u"копейки", u"копеек")
+                    )
+            return template.format(**n)
+
+        self.templates.spellTotal = lambda due: Paragraph(
+                u"<b>{}</b>".format(spellTotal(due)), 
+                self.param.normalStyle)
+
 
     def setupDoc(self):
         self.doc = BaseDocTemplate(
@@ -171,10 +186,11 @@ class Invoice(InvoiceDataMixin):
         from reportlab.platypus import TableStyle
         base = TableStyle((
             ('FONTNAME', (0,0), (-1,-1), self.param.baseFont),
-            ('LEFTPADDING', (0,0), (-1,-1), self.param.tablePadding),
-            ('RIGHTPADDING', (0,0), (-1,-1),self.param.tablePadding),
+            ('LEFTPADDING', (0,0), (-1,-1), self.param.tablePadding + 1),
+            ('RIGHTPADDING', (0,0), (-1,-1),self.param.tablePadding + 1),
             ('BOTTOMPADDING', (0,0), (-1,-1), self.param.tablePadding),
-            ('TOPPADDING', (0,0), (-1,-1), self.param.tablePadding)
+            ('TOPPADDING', (0,0), (-1,-1), self.param.tablePadding),
+            ('VALIGN', (0,0), (-1,-1), "BOTTOM")
             ))
         self.param.signaturesTableStyle = TableStyle((
             ('FONTNAME', (0,0), (0,0), "Arial Bold"),
@@ -189,18 +205,20 @@ class Invoice(InvoiceDataMixin):
             ('FONTSIZE', (3,0), (3,0), self.param.minSize),
             ('LINEABOVE', (0,0), (-1,0), 2, self.param.lineColor),
             ('LINEBELOW', (1,0), (1,0), 1, self.param.lineColor),
-            ('LINEBELOW', (3,0), (3,0), 1, self.param.lineColor)
+            ('LINEBELOW', (3,0), (3,0), 1, self.param.lineColor),
+            ('TOPPADDING', (0,0), (0,-1), 5 * mm),
+            ('LEFTPADDING', (2,0), (2,0), 10*mm)
             ), parent=base)
         self.param.totalsTableStyle = TableStyle((
+            ('TOPPADDING', (0,0), (-1, 0), 3*mm),
             ('FONTNAME', (0, 0), (-1, -1), "Arial Bold"),
-            ('FONTNAME', (0, 3), (0, 3), "Arial"),
             ('ALIGN', (1,0), (-1, -1), "RIGHT"),
-            ('ALIGN', (0,0), (0, -1), "LEFT")
             ), parent=base)
         self.param.goodsTableStyle = TableStyle(
             (('FONTNAME', (0,0), (-1,-1), "Arial"),
             ('FONTNAME', (0,0), (-1,0), "Arial Bold"),
             ('FONTSIZE', (0,1), (-1, -1), self.param.minSize),
+            ('LEADING', (0,1), (-1, -1), self.param.minSize * 1.2),
             ('ALIGN', (0,0), (-1, 0), "CENTRE"),
             ('ALIGN', (0,1), (0,-1), "CENTRE"),
             ('ALIGN', (2,1), (2,-1), "RIGHT"),
@@ -210,6 +228,7 @@ class Invoice(InvoiceDataMixin):
         self.param.memberTableStyle = TableStyle((
                 ('FONTNAME',(0,0), (-1,-1), "Arial"),
                 ('VALIGN', (0,0), (0,-1), "TOP"),
+                ('BOTTOMPADDING', (0,0), (-1, 0), 4 * mm),
                 ('ALIGN', (0,0), (0,-1), "LEFT")
                 ), parent=base)
 
@@ -217,19 +236,17 @@ class Invoice(InvoiceDataMixin):
 
         canvas.setFont(self.param.baseFont, self.param.normalSize)
 
-        def writeCenteredLine(y, line):
-            c = canvas
-            x = self.doc.width / 2
-            c.drawCentredString(x, y, line)
-
         def writeWarn(warn):
             c = canvas
             c.saveState()
+            c.setFontSize(self.param.minSize)
             warnsplit = warn.split('\n')
             count = 1
-            start = 285*mm
-            for i in warnsplit:
-                writeCenteredLine(start-count*9, i)
+            start = 275*mm
+            x = self.doc.pagesize[0] / 2
+            for line in warnsplit:
+                y = start-count*self.param.minSize
+                c.drawCentredString(x, y, line)
                 count += 1
             c.restoreState()
 
@@ -247,12 +264,13 @@ class Invoice(InvoiceDataMixin):
             req = Extract(requisites)
             c = canvas
             c.saveState()
-            c.translate(10*mm, 235*mm)
+            c.translate(self.doc.leftMargin, 235*mm)
             x = (0, 43*mm, 86*mm, 100*mm, 175*mm)
             y = (0, 11*mm, 15*mm, 21*mm, 25*mm)
             c.grid((x[0], x[2], x[3], x[4]), (y[0], y[2], y[4]))
             c.grid((x[0], x[1], x[2]), (y[1], y[2]))
             c.line(x[2], y[3], x[3], y[3])
+            c.setFontSize(self.param.minSize)
             c.drawString(mm, y[2] + mm, u"Банк получателя")
             c.drawString(mm, mm, u"Получатель")
             c.setFontSize(self.param.normalSize)
@@ -297,7 +315,7 @@ class Invoice(InvoiceDataMixin):
         accountant = manager
         signaturesTable = Table(
                 ((u"Руководитель", manager, u"Бухгалтер", accountant),),
-                colWidths = (25*mm, 70*mm, 20*mm, 60*mm),
+                colWidths = (29*mm, 61*mm, 30*mm, 55*mm),
                 style = self.param.signaturesTableStyle)
         self.story.append(signaturesTable)
 
@@ -326,18 +344,17 @@ class Invoice(InvoiceDataMixin):
         total = self.totals.total
         vat = self.totals.vat
         due = self.totals.due or total
-        amountTemplate = u"Всего наименований {amount}, на сумму {due:.2f} руб."
         totalsTable = (
                 ("", u"Итого:", '{:.2f}'.format(total)),
                 ("", u"В том числе НДС:", '{:.2f}'.format(vat)),
                 ("", u"Всего к оплате:", '{:.2f}'.format(due)),
-                (amountTemplate.format(amount=amount, due=due),"",""),
-                (spellTotal(due), "", "")
                 )
         t = Table(totalsTable, 
-                colWidths=(125*mm, 30*mm, 20*mm), 
+                colWidths=(125*mm, 25*mm, 25*mm), 
                 style=self.param.totalsTableStyle)
         self.story.append(t)
+        self.story.append(self.templates.amountTemplate(amount, due))
+        self.story.append(self.templates.spellTotal(due))
 
     def write(self):
         spacer = Spacer(0, self.param.normalSize)
@@ -349,8 +366,6 @@ class Invoice(InvoiceDataMixin):
         self.story.append(spacer)
         self.writeSignatures()
         self.doc.build(self.story)
-
-
 
 customer = dict(
             name=u"""Общество с ограниченной ответственностью "Издательство ГРАНАТ" """,
@@ -366,8 +381,14 @@ item = dict(
         units = u"шт",
         price = 54.63
         )
+item2 = dict(
+        name = u"""Керамзитобетонные стеновые блоки 390х190х188 с
+        прямоугольными пустотами и  квадратными заглотами""",
+        quantity = 6000,
+        price = 35.63
+        )
 
-goods = (item for i in range(100))
+goods = ((lambda i: (item, item2)[i % 2])(i) for i in range(100))
 
 invoice = Invoice('invoice.pdf')
 invoice.setCustomerRequisites(customer)
