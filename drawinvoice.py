@@ -1,5 +1,8 @@
 #set encoding=utf-8
 from collections import namedtuple
+from decimal import Decimal as D
+from babel.numbers import format_currency
+from babel.numbers import format_decimal
 
 from reportlab.platypus import PageTemplate
 from reportlab.platypus import Frame
@@ -59,14 +62,14 @@ class InvoiceDataMixin:
 
     def feed(self, goods):
         i= 0
-        total = 0
+        total = D(0)
         self.goods = []
         for item in goods:
             i += 1
             units = item.get('units', None) or u'шт'
             item = Extract(item)
-            amount = item.price * item.quantity
-            line = Line(i, item.name, item.quantity, units, item.price, amount)
+            amount = D(item.price) * D(item.quantity)
+            line = Line(i, item.name, D(item.quantity), units, D(item.price), amount)
             self.goods.append(line)
             total += amount
         self.totals = Parameters()
@@ -76,7 +79,7 @@ class InvoiceDataMixin:
         self.totals.due = self.getDue(goods)
 
     def getVat(self, goods):
-        return self.totals.total / 118.00 * 18
+        return self.totals.total / D('118.00') * D('18')
     def getDue(self, goods):
         return None
 
@@ -117,6 +120,9 @@ class Invoice(InvoiceDataMixin):
         self.setupTemplates()
 
     def setupTemplates(self):
+        _D = lambda x: format_decimal(x, locale="ru_RU")
+        _C = lambda x: format_currency(x, '', locale="ru_RU")
+
         self.templates = Parameters()
         self.templates.memberTemplate = u"""<b>{name}, ИНН {INN}, КПП {KPP},
                 {address}, тел.: {tel}</b>""" 
@@ -126,16 +132,16 @@ class Invoice(InvoiceDataMixin):
             return Line(
                     item.position,
                     Paragraph(item.name, pStyle),
-                    "{:d}".format(item.quantity),
+                    _D(item.quantity),
                     item.units,
-                    "{:.2f}".format(item.price),
-                    "{:.2f}".format(item.amount)
+                    _C(item.price),
+                    _C(item.amount)
                     )
         self.templates.itemTemplate = itemTemplate
 
         self.templates.amountTemplate = lambda amount, due: Paragraph(
-                u"Всего наименований {amount}, на сумму {due:.2f} руб.".format(
-                    amount=amount, due=due), self.param.normalStyle)
+                u"Всего наименований {amount}, на сумму {due} руб.".format(
+                    amount=_D(amount), due=_C(due)), self.param.normalStyle)
 
         def spellTotal(total):
             template = u"{rubles} {kopnum:02d} {kopstr}"
@@ -152,6 +158,19 @@ class Invoice(InvoiceDataMixin):
         self.templates.spellTotal = lambda due: Paragraph(
                 u"<b>{}</b>".format(spellTotal(due)), 
                 self.param.normalStyle)
+
+        self.templates.totalsTableTemplate = lambda total, vat, due: (
+                        ("", u"Итого:", _C(total)),
+                        ("", u"В том числе НДС:", _C(vat)),
+                        ("", u"Всего к оплате:", _C(due)),
+                        )
+        
+        from datetime import date
+        from pytils.dt import ru_strftime
+        self.templates.invoiceTitle = lambda invoiceNum: \
+                u"Счет на оплату №{} от {}".format(str(invoiceNum), 
+                        ru_strftime(u"%d %B %Y", inflected=True, 
+                            date=date.today()))
 
 
     def setupDoc(self):
@@ -266,7 +285,7 @@ class Invoice(InvoiceDataMixin):
             c.saveState()
             c.translate(self.doc.leftMargin, 235*mm)
             x = (0, 43*mm, 86*mm, 100*mm, 175*mm)
-            y = (0, 11*mm, 15*mm, 21*mm, 25*mm)
+            y = (0, 11*mm, 15*mm, 23*mm, 27*mm)
             c.grid((x[0], x[2], x[3], x[4]), (y[0], y[2], y[4]))
             c.grid((x[0], x[1], x[2]), (y[1], y[2]))
             c.line(x[2], y[3], x[3], y[3])
@@ -295,12 +314,7 @@ class Invoice(InvoiceDataMixin):
             c = canvas
             c.saveState()
             c.setFont('Arial Bold', self.param.bigSize)
-            from datetime import date as d
-            import locale
-            locale.resetlocale()
-            locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
-            c.drawString(x[0], 225*mm,
-                u"Счет на оплату №%s от %s" % (invoiceNum, d.today().strftime("%x")))
+            c.drawString(x[0], 225*mm, self.templates.invoiceTitle(invoiceNum))
             c.setLineWidth(0.5*mm)
             c.line(x[0], 222*mm, x[-1], 222*mm)
             c.restoreState()
@@ -344,11 +358,8 @@ class Invoice(InvoiceDataMixin):
         total = self.totals.total
         vat = self.totals.vat
         due = self.totals.due or total
-        totalsTable = (
-                ("", u"Итого:", '{:.2f}'.format(total)),
-                ("", u"В том числе НДС:", '{:.2f}'.format(vat)),
-                ("", u"Всего к оплате:", '{:.2f}'.format(due)),
-                )
+        totalsTable = self.templates.totalsTableTemplate(total = total,
+                vat = vat, due = due)
         t = Table(totalsTable, 
                 colWidths=(125*mm, 25*mm, 25*mm), 
                 style=self.param.totalsTableStyle)
@@ -366,35 +377,6 @@ class Invoice(InvoiceDataMixin):
         self.story.append(spacer)
         self.writeSignatures()
         self.doc.build(self.story)
-
-customer = dict(
-            name=u"""Общество с ограниченной ответственностью "Издательство ГРАНАТ" """,
-            address=u"""121471, Москва г, Рябиновая ул, дом №44, кв.1""",
-            INN="7729707288",
-            KPP="772901001",
-            tel="(499)391-48-04",
-            )
-
-item = dict(
-        name = u"""2618.Антимикробная терапия""",
-        quantity = 2000,
-        units = u"шт",
-        price = 54.63
-        )
-item2 = dict(
-        name = u"""Керамзитобетонные стеновые блоки 390х190х188 с
-        прямоугольными пустотами и  квадратными заглотами""",
-        quantity = 6000,
-        price = 35.63
-        )
-
-goods = ((lambda i: (item, item2)[i % 2])(i) for i in range(100))
-
-invoice = Invoice('invoice.pdf')
-invoice.setCustomerRequisites(customer)
-invoice.setInvoiceNumber(24)
-invoice.feed(goods)
-invoice.write()
 
 
 
