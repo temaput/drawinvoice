@@ -1,7 +1,7 @@
 #set encoding=utf-8
 import unittest
-from drawinvoice import Invoice
-from drawkvit import SbrfKvit
+from drawinvoice.simpleinvoice import Invoice
+from drawinvoice.sbrfslip import SbrfSlip
 from decimal import Decimal as D
 
 class SimpleInvoice(unittest.TestCase):
@@ -63,7 +63,7 @@ class SimpleKvit(unittest.TestCase):
             name = u'Оплата заказа №12'
             )
     def test(self):
-        kvit = SbrfKvit('testKvit.pdf')
+        kvit = SbrfSlip('testKvit.pdf')
         kvit.feed(self.req, self.payment)
         kvit.write()
 

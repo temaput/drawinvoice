@@ -15,7 +15,7 @@ class Parameters: pass
 
 debug = True
 
-class SbrfKvit:
+class SbrfSlip:
     def __init__(self, filename):
         self.canvas = Canvas(filename)
         pdfmetrics.registerFont(TTFont('Ubuntu', 'UbuntuMono-R.ttf'))
