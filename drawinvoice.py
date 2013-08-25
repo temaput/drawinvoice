@@ -1,7 +1,7 @@
 #set encoding=utf-8
 from collections import namedtuple
 from decimal import Decimal as D
-from babel.numbers import format_currency
+from decimal import getcontext
 from babel.numbers import format_decimal
 
 from reportlab.platypus import PageTemplate
@@ -74,7 +74,7 @@ class InvoiceDataMixin:
             total += amount
         self.totals = Parameters()
         self.totals.total = total
-        self.totals.amount = i
+        self.totals.quantity = i
         self.totals.vat = self.getVat(goods)
         self.totals.due = self.getDue(goods)
 
@@ -93,6 +93,7 @@ class Invoice(InvoiceDataMixin):
         registerFontFamily('Arial', normal='Arial', bold='Arial Bold')
         self.filename = filename
         self.setParams()
+        self.story = []
 
     def setParams(self):
         p = Parameters()
@@ -121,7 +122,7 @@ class Invoice(InvoiceDataMixin):
 
     def setupTemplates(self):
         _D = lambda x: format_decimal(x, locale="ru_RU")
-        _C = lambda x: format_currency(x, '', locale="ru_RU")
+        _C = lambda x: format_decimal(x, format='#,##0.00', locale="ru_RU")
 
         self.templates = Parameters()
         self.templates.memberTemplate = u"""<b>{name}, ИНН {INN}, КПП {KPP},
@@ -354,7 +355,7 @@ class Invoice(InvoiceDataMixin):
         self.story.append(t)
 
     def writeTotals(self):
-        amount = self.totals.amount
+        quantity = self.totals.quantity
         total = self.totals.total
         vat = self.totals.vat
         due = self.totals.due or total
@@ -364,12 +365,11 @@ class Invoice(InvoiceDataMixin):
                 colWidths=(125*mm, 25*mm, 25*mm), 
                 style=self.param.totalsTableStyle)
         self.story.append(t)
-        self.story.append(self.templates.amountTemplate(amount, due))
+        self.story.append(self.templates.amountTemplate(quantity, due))
         self.story.append(self.templates.spellTotal(due))
 
     def write(self):
         spacer = Spacer(0, self.param.normalSize)
-        self.story = []
         self.writeMembers()
         self.story.append(spacer)
         self.writeGoods()
