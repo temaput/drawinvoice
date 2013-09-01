@@ -12,6 +12,19 @@ class SimpleInvoice(unittest.TestCase):
                 KPP="772901001",
                 tel="(499)391-48-04",
                 )
+    beneficiary = dict(
+            name = u"ООО {laquo}Издательский дом {laquo}Практика{raquo}".format(
+                laquo =  u'\u00AB',
+                raquo = u'\u00BB'),
+            INN = "7705166992",
+            BIK = "044525225",
+            correspondentAccount = "30101810400000000225",
+            beneficiaryAccount = "40702810138040103580",
+            bankName = (u"Сбербанк России ОАО, г.Москва,\n"
+                        u"Московский банк Сбербанка России ОАО"),
+            address=u"121471, Москва г, Рябиновая ул, дом №44, кв.1",
+            manager = u"Ананич Владимир Анатольевич" 
+            )
 
     item = dict(
             name = u"""2618.Антимикробная терапия""",
@@ -30,9 +43,9 @@ class SimpleInvoice(unittest.TestCase):
     def test(self):
         goods = ((lambda i: (self.item, self.item2)[i % 2])(i) for i in range(100))
         invoice = Invoice('testInvoice.pdf')
-        invoice.setCustomerRequisites(self.customer)
         invoice.setInvoiceNumber(24)
-        invoice.feed(goods)
+        invoice.feed(goods = goods)
+        invoice.feed(customer=self.customer, beneficiary=self.beneficiary)
         invoice.write()
 
 class CalculationsTest(unittest.TestCase):
@@ -46,25 +59,38 @@ class CalculationsTest(unittest.TestCase):
     def test(self):
         goods = (self.item for i in range(7))
         invoice = Invoice('/dev/null')
-        invoice.feed(goods)
+        invoice.feed(goods=goods)
         self.assertEqual(invoice.totals.total.quantize(D('0.01')), D('764.82'))
         self.assertEqual(invoice.totals.quantity, 7)
-        self.assertEqual(invoice.totals.vat.quantize(D('0.01')), D('116.67'))
+        self.assertEqual(invoice.totals.tax.quantize(D('0.01')), D('116.67'))
         invoice.writeTotals()
 
 class SimpleKvit(unittest.TestCase):
-    req = dict(
+    beneficiary = dict(
+            name = u"ООО {laquo}Издательский дом {laquo}Практика{raquo}".format(
+                laquo =  u'\u00AB',
+                raquo = u'\u00BB'),
+            INN = "7705166992",
+            BIK = "044525225",
+            correspondentAccount = "30101810400000000225",
+            beneficiaryAccount = "40702810138040103580",
+            bankName = (u"Сбербанк России ОАО, г.Москва,\n"
+                        u"Московский банк Сбербанка России ОАО"),
+            address=u"121471, Москва г, Рябиновая ул, дом №44, кв.1",
+            manager = u"Ананич Владимир Анатольевич" 
+            )
+    customer = dict(
             name = u'Путилов Артем Петрович',
             address = u'111402, Аллея Жемчуговой, д.5, корп.4, кв. 187'
             )
 
-    payment = dict(
+    order = dict(
             amount = 2445.21,
             name = u'Оплата заказа №12'
             )
     def test(self):
         kvit = SbrfSlip('testKvit.pdf')
-        kvit.feed(self.req, self.payment)
+        kvit.feed(customer = self.customer, order=self.order, beneficiary=self.beneficiary)
         kvit.write()
 
 

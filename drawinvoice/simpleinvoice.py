@@ -1,7 +1,5 @@
 #set encoding=utf-8
 from collections import namedtuple
-from decimal import Decimal as D
-from decimal import getcontext
 from babel.numbers import format_decimal
 
 from reportlab.platypus import PageTemplate
@@ -18,81 +16,21 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 
-class Extract:
-    def __init__(self, dct):
-        self.__dict__.update(dct)
-
-Line = namedtuple("Line", 
-        ('position', 'name', 'quantity', 'units', 'price', 'amount'))
-
-
-class Parameters: pass
-
-
-class InvoiceDataMixin:
-    """Manages requisites and calculations for invoice"""
-
-    warn = u"""Внимание! Оплата данного счета означает согласие с условиями поставки товара. Уедомление об оплате
-    обязательно. В противном случае не гарантируется наличие товара на складе. Товар отпускается по факту
-    прихода денег на р/с Поставщика. самовывозом при наличии доверенности и паспорта"""
-
-    req = Parameters()
-    req.beneficiary = dict(
-        INN = "5028015253",
-        KPP = "502801001",
-        bankName = u"""Филиал "Краснодарский" ООО КБ "Нэклис-Банк"
-        г. КРАСНОДАР""",
-        name = u"""ОАО "Можайский полиграфический комбинат"
-        (Среднерусский банк ОАО "Сбербанк России")""",
-        BIK = "044525225",
-        correspondentAccount = "30101810400000000225",
-        beneficiaryAccount = "40702810140370172033",
-        address = u"""353250, Краснодарский край, Северский р-н,
-        Новодмитриевская ст-ца, Шверника ул, дом №56""",
-        tel = u"8(861)945-55-11",
-        manager = u"Сысоев В.И."
-        )
-
-    def setCustomerRequisites(self, customer):
-        self.req.customer = {}
-        self.req.customer.update(customer)
-
-    def setInvoiceNumber(self, num):
-        self.req.invoiceNumber = str(num)
-
-    def feed(self, goods):
-        i= 0
-        total = D(0)
-        self.goods = []
-        for item in goods:
-            i += 1
-            units = item.get('units', None) or u'шт'
-            item = Extract(item)
-            amount = D(item.price) * D(item.quantity)
-            line = Line(i, item.name, D(item.quantity), units, D(item.price), amount)
-            self.goods.append(line)
-            total += amount
-        self.totals = Parameters()
-        self.totals.total = total
-        self.totals.quantity = i
-        self.totals.vat = self.getVat(goods)
-        self.totals.due = self.getDue(goods)
-
-    def getVat(self, goods):
-        return self.totals.total / D('118.00') * D('18')
-    def getDue(self, goods):
-        return None
-
+from .datamixin import Parameters, Extract, DataMixin
 debug = False
 
-class Invoice(InvoiceDataMixin):
+class Invoice(DataMixin):
     """draws the invoice"""
     def __init__(self, filename):
+        super(Invoice, self).__init__()
         pdfmetrics.registerFont(TTFont('Arial', 'arial.ttf'))
         pdfmetrics.registerFont(TTFont('Arial Bold', 'arialbd.ttf'))
         registerFontFamily('Arial', normal='Arial', bold='Arial Bold')
         self.filename = filename
         self.setParams()
+        self.Line = namedtuple("Line", 
+            ('position', 'name', 'quantity', 'units', 'price', 'amount'))
+
         self.story = []
 
     def setParams(self):
@@ -125,12 +63,25 @@ class Invoice(InvoiceDataMixin):
         _C = lambda x: format_decimal(x, format='#,##0.00', locale="ru_RU")
 
         self.templates = Parameters()
-        self.templates.memberTemplate = u"""<b>{name}, ИНН {INN}, КПП {KPP},
-                {address}, тел.: {tel}</b>""" 
+        self.templates.warn = u"""Внимание! Оплата данного счета означает согласие с условиями поставки товара. Уедомление об оплате
+        обязательно. В противном случае не гарантируется наличие товара на складе. Товар отпускается по факту
+        прихода денег на р/с Поставщика. самовывозом при наличии доверенности и паспорта"""
+
+        def memberTemplate(m):
+            res = u"<b>{m.name}"
+            if m.INN:
+                res += u", ИНН {m.INN}"
+            if m.KPP:
+                res += u", КПП {m.KPP}"
+            res += u", {m.address}"
+            if m.tel:
+                res += u", тел.: {m.tel}</b>" 
+            return res.format(m=m)
+        self.templates.memberTemplate = memberTemplate
 
         def itemTemplate(item):
             pStyle = self.param.minStyle
-            return Line(
+            return self.Line(
                     item.position,
                     Paragraph(item.name, pStyle),
                     _D(item.quantity),
@@ -162,7 +113,7 @@ class Invoice(InvoiceDataMixin):
 
         self.templates.totalsTableTemplate = lambda total, vat, due: (
                         ("", u"Итого:", _C(total)),
-                        ("", u"В том числе НДС:", _C(vat)),
+                        ("", u"В том числе НДС:", _C(vat) if vat else u"Без НДС"),
                         ("", u"Всего к оплате:", _C(due)),
                         )
         
@@ -270,7 +221,7 @@ class Invoice(InvoiceDataMixin):
                 count += 1
             c.restoreState()
 
-        writeWarn(self.warn)
+        writeWarn(self.templates.warn)
 
         def writeName(x, y, name):
             c = canvas
@@ -307,7 +258,7 @@ class Invoice(InvoiceDataMixin):
             c.restoreState()
 
 
-        writeRequisites(self.req.beneficiary)
+        writeRequisites(self.data.beneficiary)
 
         x = (self.doc.leftMargin, self.doc.width / 2, self.doc.pagesize[0] - self.doc.rightMargin)
 
@@ -320,13 +271,13 @@ class Invoice(InvoiceDataMixin):
             c.line(x[0], 222*mm, x[-1], 222*mm)
             c.restoreState()
 
-        writeInvoiceTitle(self.req.invoiceNumber)
+        writeInvoiceTitle(self.data.invoiceNumber)
 
 
 
 #========================================
     def writeSignatures(self):
-        manager = self.req.beneficiary['manager']
+        manager = self.data.beneficiary.get('manager', '')
         accountant = manager
         signaturesTable = Table(
                 ((u"Руководитель", manager, u"Бухгалтер", accountant),),
@@ -335,8 +286,10 @@ class Invoice(InvoiceDataMixin):
         self.story.append(signaturesTable)
 
     def writeMembers(self):
-        beneficiaryData = self.templates.memberTemplate.format(**self.req.beneficiary)
-        customerData = self.templates.memberTemplate.format(**self.req.customer)
+        beneficiaryData = self.templates.memberTemplate(
+                m=Extract(self.data.beneficiary))
+        customerData = self.templates.memberTemplate(
+                m=Extract(self.data.customer))
         data = (
                 (u"Поставщик:", Paragraph(beneficiaryData, self.param.normalStyle)),
                 (u"Покупатель:", Paragraph(customerData, self.param.normalStyle))
@@ -357,7 +310,7 @@ class Invoice(InvoiceDataMixin):
     def writeTotals(self):
         quantity = self.totals.quantity
         total = self.totals.total
-        vat = self.totals.vat
+        vat = self.totals.tax
         due = self.totals.due or total
         totalsTable = self.templates.totalsTableTemplate(total = total,
                 vat = vat, due = due)
@@ -377,9 +330,3 @@ class Invoice(InvoiceDataMixin):
         self.story.append(spacer)
         self.writeSignatures()
         self.doc.build(self.story)
-
-
-
-
-
-

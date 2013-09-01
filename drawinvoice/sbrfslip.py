@@ -11,12 +11,13 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib import colors
 
-class Parameters: pass
 
-debug = True
+from .datamixin import Parameters, Extract, DataMixin
+debug = False
 
-class SbrfSlip:
+class SbrfSlip(DataMixin):
     def __init__(self, filename):
+        super(SbrfSlip, self).__init__()
         self.canvas = Canvas(filename)
         pdfmetrics.registerFont(TTFont('Ubuntu', 'UbuntuMono-R.ttf'))
         pdfmetrics.registerFont(TTFont('Ubuntu Bold', 'UbuntuMono-B.ttf'))
@@ -69,37 +70,17 @@ class SbrfSlip:
             u"за услуги банка, ознакомлен и согласен"
             )
         self.templates.year = self.date.strftime(u"%Y г.".encode('utf-8'))
-        self.beneficiary = dict(
-            name = u"ООО {laquo}Издательский дом {laquo}Практика{raquo}".format(
-                laquo = self.templates.entities['laquo'],
-                raquo = self.templates.entities['raquo']),
-            INN = "7705166992",
-            BIK = "044525225",
-            correspondentAccount = "30101810400000000225",
-            beneficiaryAccount = "40702810138040103580",
-            bankName = (u"Сбербанк России ОАО, г.Москва, "
-                        u"Московский банк Сбербанка России ОАО"),
-            )
-
-    def feed(self, req, payment):
-        Story = namedtuple("Story", ('rub',
-                                    'kop',
-                                    'address',
-                                    'customerName',
-                                    'paymentName'))
-
-        amount = D(payment.get('amount')).quantize(D('0.01'))
-        _, digits, _ = amount.as_tuple()
-        kop = ''.join(str(digit) for digit in digits[-2:])
-        rub = ''.join(str(digit) for digit in digits[:-2])
-
-        self.story = Story(
-                rub,
-                kop,
-                req.get('address'),
-                req.get('name'),
-                payment.get('name')
-                )
+        self.templates._amount = None
+        Amount = namedtuple("Amount", ('rub', 'kop'))
+        def amount():
+            if self.templates._amount is None:
+                amount = self.templates._amount = D(self.data.order.get('amount', 
+                                                0)).quantize(D('0.01'))
+                _, digits, _ = amount.as_tuple()
+                self.templates._rub = ''.join(str(digit) for digit in digits[:-2])
+                self.templates._kop = ''.join(str(digit) for digit in digits[-2:])
+            return Amount(self.templates._rub, self.templates._kop)
+        self.templates.amount = amount
 
     def writeKvit(self, x, y):
         c = self.canvas
@@ -141,8 +122,8 @@ class SbrfSlip:
             c.drawString(24 * mm, y, u'коп.')
             if withAmount:
                 c.setFont(self.param.italicFont, self.param.normalSize)
-                c.drawCentredString(5 * mm, y, self.story.rub)
-                c.drawCentredString(20 * mm, y, self.story.kop)
+                c.drawCentredString(5 * mm, y, self.templates.amount().rub)
+                c.drawCentredString(20 * mm, y, self.templates.amount().kop)
             c.restoreState()
 
         c, y = nextLine(c, y)
@@ -164,14 +145,14 @@ class SbrfSlip:
         c, y = nextLine(c, y)
         c.drawString(left, y, u'Адрес плательщика')
         c.setFont(self.param.italicFont, self.param.normalSize)
-        c.drawString(32 * mm, y, self.story.address)
+        c.drawString(32 * mm, y, self.data.customer.get('address',''))
         c.setFont(self.param.baseFont, self.param.normalSize)
         c.line(32 * mm, y-2, right, y-2)
 
         c, y = nextLine(c, y)
         c.drawString(left, y, u'Ф.,и.,о. плательщика')
         c.setFont(self.param.italicFont, self.param.normalSize)
-        c.drawString(34 * mm, y, self.story.customerName)
+        c.drawString(34 * mm, y, self.data.customer.get('name',''))
         c.setFont(self.param.baseFont, self.param.normalSize)
         c.line(34 * mm, y-2, right, y-2)
 
@@ -186,7 +167,7 @@ class SbrfSlip:
         c.drawCentredString(x, _y, u"(номер лицевого счета (код) плательщика)")
         _y = y + 2
         c.setFont(self.param.italicFont, self.param.normalSize)
-        c.drawString(left, _y, self.story.paymentName)
+        c.drawString(left, _y, self.data.order.get("paymentName",""))
 
 
         def writeNumbersInSquares(canvas, x, y, numbers, align="right"):
@@ -225,21 +206,21 @@ class SbrfSlip:
 
         c, y = nextLine(c, y)
         c.drawString(left, y, u"Номер кор./сч. банка получателя платежа")
-        writeNumbersInSquares(c, right, y, self.beneficiary.get(
+        writeNumbersInSquares(c, right, y, self.data.beneficiary.get(
                                             "correspondentAccount"))
 
         c, y = nextLine(c, y)
         c.drawString(left, y, u"В")
         c.drawString(90 * mm, y, u"БИК")
         c.line(6 * mm, y, 80 * mm, y)
-        writeNumbersInSquares(c, right, y, self.beneficiary.get("BIK"))
+        writeNumbersInSquares(c, right, y, self.data.beneficiary.get("BIK"))
         c.setFont(self.param.baseFont, self.param.minSize)
-        c.drawString(6 * mm, y + 1, self.beneficiary.get("bankName"))
+        c.drawString(6 * mm, y + 1, self.data.beneficiary.get("bankName"))
 
         c, y = nextLine(c, y)
-        writeNumbersInSquares(c, left, y, self.beneficiary.get("INN"), 
+        writeNumbersInSquares(c, left, y, self.data.beneficiary.get("INN"), 
                 align="left")
-        writeNumbersInSquares(c, right, y, self.beneficiary.get(
+        writeNumbersInSquares(c, right, y, self.data.beneficiary.get(
                                                 "beneficiaryAccount"))
         
 
@@ -254,7 +235,7 @@ class SbrfSlip:
         c.line(left, y, right, y)
         c.setFont(self.param.italicFont, self.param.bigSize)
         x = left + (right - left) / 2
-        c.drawCentredString(x, y + 1, self.beneficiary.get("name"))
+        c.drawCentredString(x, y + 1, self.data.beneficiary.get("name"))
 
         _y = y - self.param.minSize
         c.setFont(self.param.baseFont, self.param.minSize)
@@ -278,4 +259,3 @@ class SbrfSlip:
         self.writeKvit(50 * mm, 80 * mm)
         self.canvas.showPage()
         self.canvas.save()
-
