@@ -28,7 +28,13 @@ class Item(object):
         self.units = item.get('units', None) or u'шт'
         self.price = D(item.get('price', 0))
         self.quantity = D(item.get('quantity', 0))
-        self.amount =  self.price * self.quantity
+        self.amount =  D(item.get('amount', 0))
+        if not self.amount and self.price and self.quantity:
+            self.amount = self.price * self.quantity
+        elif not self.price and self.amount and self.quantity:
+            self.price = self.amount / self.quantity
+        elif not self.quantity and self.price and self.amount:
+            self.quantity = D(self.amount / self.price).quantize(0)
         self.tax = getTax(self.amount, item)
         self.name = item.get('name', '')
         self.position = pos
