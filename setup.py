@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 
 setup(name='drawinvoice',
-        version='0.2.1',
+        version='0.3',
         url='https://github.com/temaput/drawinvoice',
         author="Artem Putilov",
         author_email="putilkin@gmail.com",

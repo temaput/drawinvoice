@@ -1,16 +1,12 @@
 #set encoding=utf-8
 from decimal import Decimal as D
 from decimal import getcontext
+from datetime import date 
+import logging
 from babel.numbers import format_decimal
 
-class Extract:
-    def __init__(self, dct):
-        self.__dict__.update(dct)
-    def __getattr__(self, _):
-        return ""
-
-
-class Parameters: pass
+from basedraw import Parameters
+logger = logging.getLogger(__name__)
 
 def getVat(amount):
     return amount / D('118.00') * D('18')
@@ -43,22 +39,18 @@ class Item(object):
 
 class DataMixin(object):
     """Manages requisites and calculations for invoice"""
-
     def __init__(self):
+        logger.debug("initializing")
         self.data = Parameters()
-        self.data.invoiceNumber = ""
-        self.data.beneficiary = {}
-        self.data.customer = {}
-        self.data.order = {}
-
         self.goods = []
         self.totals = Parameters()
-
+        self.date = date.today()
 
     def setInvoiceNumber(self, num):
         self.data.invoiceNumber = str(num)
 
     def parseGoods(self):
+        logger.debug("parsing goods")
         i= 0
         total = D(0)
         for item in self.data.goods:
@@ -71,13 +63,25 @@ class DataMixin(object):
         self.totals.tax = getTax(total, self.data.order)
         self.totals.due = None
 
-
     def feed(self, **kwargs):
-        self.data.__dict__.update(kwargs)
-        if 'goods' in kwargs:
-            self.parseGoods()
-        if 'order' in kwargs:
-            if not self.data.invoiceNumber:
-                self.data.invoiceNumber = self.data.order.get('number', '')
+        self.data.update(kwargs)
+
+    def finalize(self):
+        logger.debug('finalizing')
+        self.parseGoods()
+        logger.debug("original type of beneficiary is %s", type(self.data.beneficiary))
+
+        self.data['beneficiary'] = Parameters(self.data.beneficiary)
+        logger.debug("type of beneficiary is %s", type(self.data.beneficiary))
+
+        self.data.customer = Parameters(self.data.customer)
+        logger.debug("type of customer is %s", type(self.data.customer))
+        self.data.order = Parameters(self.data.order)
+        if not self.data.invoiceNumber:
+            try:
+                self.data.invoiceNumber = self.data.order.number
+            except AttributeError:
+                pass
+        logger.debug('successfully finalized')
 
 

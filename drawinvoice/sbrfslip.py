@@ -1,69 +1,26 @@
 #set encoding=utf-8
+import logging
 from collections import namedtuple
 from decimal import Decimal as D
-from datetime import date
-
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.lib.units import mm
-from reportlab.pdfbase import pdfmetrics
-#from reportlab.pdfbase.pdfmetrics import registerFontFamily
-from reportlab.lib.pagesizes import A4 
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.lib import colors
 
 
-from .datamixin import Parameters, Extract, DataMixin
-debug = False
+from datamixin import DataMixin
+from basedraw import BaseDraw
 
-class SbrfSlip(DataMixin):
-    def __init__(self, filename):
-        super(SbrfSlip, self).__init__()
-        self.canvas = Canvas(filename)
-        pdfmetrics.registerFont(TTFont('Ubuntu', 'UbuntuMono-R.ttf'))
-        pdfmetrics.registerFont(TTFont('Ubuntu Bold', 'UbuntuMono-B.ttf'))
-        pdfmetrics.registerFont(TTFont('Ubuntu Italic', 'UbuntuMono-RI.ttf'))
-        pdfmetrics.registerFont(TTFont('DejaVu', 'DejaVuSansMono.ttf'))
-        pdfmetrics.registerFont(TTFont('DejaVu Bold', 'DejaVuSansMono-Bold.ttf'))
-        pdfmetrics.registerFont(TTFont('DejaVu Italic', 'DejaVuSansMono-Oblique.ttf'))
-        pdfmetrics.registerFont(TTFont('Arial Bold', 'arialbd.ttf'))
-        pdfmetrics.registerFont(TTFont('Arial Italic', 'ariali.ttf'))
-        pdfmetrics.registerFont(TTFont('Arial', 'arial.ttf'))
-        pdfmetrics.registerFont(TTFont('Arial Bold', 'arialbd.ttf'))
-        pdfmetrics.registerFont(TTFont('Arial Italic', 'ariali.ttf'))
-        #registerFontFamily('Arial', normal='Arial', bold='Arial Bold')
-        self.debug = debug
-        self.setParams()
+logger = logging.getLogger(__name__)
 
-    def setParams(self):
-        p = Parameters()
-        p.baseFont = "Ubuntu"
-        p.boldFont = "Ubuntu Bold"
-        p.italicFont = "Ubuntu Italic"
-        p.baseFont = "Arial"
-        p.boldFont = "Arial Bold"
-        p.italicFont = "Arial Italic"
-        p.digitsFont = "DejaVu"
-        p.normalSize = 9
-        p.minSize = 6
-        p.bigSize = 12 
-        p.lineColor = colors.black
-        p.numSquareSideWidth = 3 * mm
-        p.leading = 6 * mm
-        
-
-        self.param = p
+class SbrfSlip(BaseDraw, DataMixin):
+    def setup(self):
+        logger.debug("running setup")
+        self.canvas = Canvas(self.filename)
+        self.param.numSquareSideWidth = 3 * mm
         self.canvas.setFont(self.param.baseFont, self.param.normalSize)
-        self.canvas.setPageSize = A4
-        self.date = date.today()
+        self.canvas.setPageSize = self.param.pageSize
 
-        self.setTemplates()
-
-    def setTemplates(self):
-        self.templates = Parameters()
-        self.templates.entities = dict(
-                laquo =  u'\u00AB',
-                raquo = u'\u00BB'
-                )
+    def setupTemplates(self):
+        logger.debug("setting up templates")
         self.templates.warn = (
             u"С условиями приема указанной в платежном документе "
             u"суммы, в т.ч. с суммой взимаемой платы \n" 
@@ -83,6 +40,7 @@ class SbrfSlip(DataMixin):
         self.templates.amount = amount
 
     def writeKvit(self, x, y):
+        logger.debug("minSize = %s", self.param.minSize)
         c = self.canvas
         c.saveState()
         c.translate(x,y)
@@ -111,6 +69,7 @@ class SbrfSlip(DataMixin):
         y -= 3 * mm
 
         def writeSumm(canvas, x, y, withAmount=False):
+            logger.debug("writeSumm, amount template is %s", self.templates.amount)
             c = canvas
             c.saveState()
             c.translate(x, y)
@@ -145,7 +104,7 @@ class SbrfSlip(DataMixin):
         c, y = nextLine(c, y)
         c.drawString(left, y, u'Адрес плательщика')
         c.setFont(self.param.italicFont, self.param.normalSize)
-        c.drawString(32 * mm, y, self.data.customer.get('address',''))
+        c.drawString(32 * mm, y, self.data.customer.address)
         c.setFont(self.param.baseFont, self.param.normalSize)
         c.line(32 * mm, y-2, right, y-2)
 
@@ -170,7 +129,10 @@ class SbrfSlip(DataMixin):
         c.drawString(left, _y, self.data.order.get("paymentName",""))
 
 
-        def writeNumbersInSquares(canvas, x, y, numbers, align="right"):
+        def writeNumbersInSquares(canvas, x, y, numbers, length, align="right"):
+            logger.debug("numbers are: %s", numbers)
+            if not numbers:
+                numbers = " " * length
             c = canvas
             c.saveState()
             c.translate(x, y)
@@ -206,22 +168,20 @@ class SbrfSlip(DataMixin):
 
         c, y = nextLine(c, y)
         c.drawString(left, y, u"Номер кор./сч. банка получателя платежа")
-        writeNumbersInSquares(c, right, y, self.data.beneficiary.get(
-                                            "correspondentAccount"))
-
+        writeNumbersInSquares(c, right, y, 
+                self.data.beneficiary.correspondentAccount,20) 
         c, y = nextLine(c, y)
         c.drawString(left, y, u"В")
         c.drawString(90 * mm, y, u"БИК")
         c.line(6 * mm, y, 80 * mm, y)
-        writeNumbersInSquares(c, right, y, self.data.beneficiary.get("BIK"))
+        writeNumbersInSquares(c, right, y, self.data.beneficiary.BIK, 9)
         c.setFont(self.param.baseFont, self.param.minSize)
-        c.drawString(6 * mm, y + 1, self.data.beneficiary.get("bankName"))
+        c.drawString(6 * mm, y + 1, self.data.beneficiary.bankName)
 
         c, y = nextLine(c, y)
-        writeNumbersInSquares(c, left, y, self.data.beneficiary.get("INN"), 
+        writeNumbersInSquares(c, left, y, self.data.beneficiary.INN, 10, 
                 align="left")
-        writeNumbersInSquares(c, right, y, self.data.beneficiary.get(
-                                                "beneficiaryAccount"))
+        writeNumbersInSquares(c, right, y, self.data.beneficiary.beneficiaryAccount, 20)
         
 
 
@@ -235,14 +195,15 @@ class SbrfSlip(DataMixin):
         c.line(left, y, right, y)
         c.setFont(self.param.italicFont, self.param.bigSize)
         x = left + (right - left) / 2
-        c.drawCentredString(x, y + 1, self.data.beneficiary.get("name"))
+        c.drawCentredString(x, y + 1, self.data.beneficiary.name)
 
         _y = y - self.param.minSize
         c.setFont(self.param.baseFont, self.param.minSize)
         c.drawCentredString(x, _y, u"(наименование получателя)")
         c.restoreState()
 
-    def write(self):
+    def instanceWrite(self):
+        logger.debug("============= writing ===========")
         c = self.canvas
         c.translate(10*mm, 140 * mm)
         c.grid((0, 50 * mm, 180 * mm), (0, 80 * mm, 145 * mm))

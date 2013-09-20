@@ -1,8 +1,19 @@
 #set encoding=utf-8
 import unittest
+import logging
 from drawinvoice.simpleinvoice import Invoice
 from drawinvoice.sbrfslip import SbrfSlip
 from decimal import Decimal as D
+
+logger = logging.getLogger(__name__)
+
+
+class EmptyInvoice(unittest.TestCase):
+    def test(self):
+        logger.info("====================%s===================================",self.__class__)
+        invoice = Invoice('emptyInvoice.pdf')
+        invoice.write()
+
 
 class SimpleInvoice(unittest.TestCase):
     customer = dict(
@@ -41,6 +52,7 @@ class SimpleInvoice(unittest.TestCase):
 
 
     def test(self):
+        logger.info("====================%s===================================",self.__class__)
         goods = ((lambda i: (self.item, self.item2)[i % 2])(i) for i in range(100))
         invoice = Invoice('testInvoice.pdf')
         invoice.setInvoiceNumber(24)
@@ -57,13 +69,15 @@ class CalculationsTest(unittest.TestCase):
             )
 
     def test(self):
+        logger.info("====================%s===================================",self.__class__)
+        logger.info("=======================================================")
         goods = (self.item for i in range(7))
         invoice = Invoice('/dev/null')
         invoice.feed(goods=goods)
+        invoice.write()
         self.assertEqual(invoice.totals.total.quantize(D('0.01')), D('764.82'))
         self.assertEqual(invoice.totals.quantity, 7)
         self.assertEqual(invoice.totals.tax.quantize(D('0.01')), D('116.67'))
-        invoice.writeTotals()
 
 class SimpleKvit(unittest.TestCase):
     beneficiary = dict(
@@ -74,7 +88,7 @@ class SimpleKvit(unittest.TestCase):
             BIK = "044525225",
             correspondentAccount = "30101810400000000225",
             beneficiaryAccount = "40702810138040103580",
-            bankName = (u"Сбербанк России ОАО, г.Москва,\n"
+            bankName = (u"Сбербанк России ОАО, г.Москва, "
                         u"Московский банк Сбербанка России ОАО"),
             address=u"121471, Москва г, Рябиновая ул, дом №44, кв.1",
             manager = u"Ананич Владимир Анатольевич" 
@@ -89,10 +103,18 @@ class SimpleKvit(unittest.TestCase):
             name = u'Оплата заказа №12'
             )
     def test(self):
+        logger.info("====================%s===================================",self.__class__)
+        logger.info("=======================================================")
         kvit = SbrfSlip('testKvit.pdf')
         kvit.feed(customer = self.customer, order=self.order, beneficiary=self.beneficiary)
         kvit.write()
 
+class EmptyKvit(unittest.TestCase):
+    def test(self):
+        logger.info("====================%s===================================",self.__class__)
+        logger.info("=======================================================")
+        kvit = SbrfSlip('testEmptyKvit.pdf')
+        kvit.write()
 
 if __name__ == '__main__':
     unittest.main()

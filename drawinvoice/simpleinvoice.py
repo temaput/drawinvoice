@@ -1,4 +1,5 @@
 #set encoding=utf-8
+import logging
 from collections import namedtuple
 from babel.numbers import format_decimal
 
@@ -9,33 +10,21 @@ from reportlab.platypus import Table
 from reportlab.platypus import Paragraph
 from reportlab.platypus import Spacer
 from reportlab.platypus import BaseDocTemplate
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.pdfmetrics import registerFontFamily
-from reportlab.lib.pagesizes import A4 
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 
-from .datamixin import Parameters, Extract, DataMixin
+from datamixin import DataMixin
+from basedraw import BaseDraw 
 debug = False
+logger = logging.getLogger(__name__)
 
-class Invoice(DataMixin):
+class Invoice(BaseDraw, DataMixin):
     """draws the invoice"""
-    def __init__(self, filename):
-        super(Invoice, self).__init__()
-        pdfmetrics.registerFont(TTFont('Arial', 'arial.ttf'))
-        pdfmetrics.registerFont(TTFont('Arial Bold', 'arialbd.ttf'))
-        registerFontFamily('Arial', normal='Arial', bold='Arial Bold')
-        self.filename = filename
-        self.setParams()
+    def setup(self):
         self.Line = namedtuple("Line", 
             ('position', 'name', 'quantity', 'units', 'price', 'amount'))
-
         self.story = []
 
-    def setParams(self):
-        p = Parameters()
-        p.baseFont = "Arial"
+        p = self.param
         p.tablePadding = 1
         p.normalSize = 9
         p.minSize = 8
@@ -43,7 +32,6 @@ class Invoice(DataMixin):
 
         p.firstFrameWidth = 175*mm
         p.firstFrameHeight = 210*mm
-        p.lineColor = colors.black
 
         p.normalStyle = getSampleStyleSheet()['Normal']
         p.normalStyle.fontName = p.baseFont
@@ -53,16 +41,13 @@ class Invoice(DataMixin):
         p.minStyle.fontSize = p.minSize
         p.minStyle.leading = p.minSize * 1.2
 
-        self.param = p
         self.setupDoc()
         self.setupTableStyles()
-        self.setupTemplates()
 
     def setupTemplates(self):
         _D = lambda x: format_decimal(x, locale="ru_RU")
         _C = lambda x: format_decimal(x, format='#,##0.00', locale="ru_RU")
 
-        self.templates = Parameters()
         self.templates.warn = u"""Внимание! Оплата данного счета означает согласие с условиями поставки товара. Уедомление об оплате
         обязательно. В противном случае не гарантируется наличие товара на складе. Товар отпускается по факту
         прихода денег на р/с Поставщика. самовывозом при наличии доверенности и паспорта"""
@@ -117,18 +102,17 @@ class Invoice(DataMixin):
                         ("", u"Всего к оплате:", _C(due)),
                         )
         
-        from datetime import date
         from pytils.dt import ru_strftime
         self.templates.invoiceTitle = lambda invoiceNum: \
                 u"Счет на оплату №{} от {}".format(str(invoiceNum), 
                         ru_strftime(u"%d %B %Y", inflected=True, 
-                            date=date.today()))
+                            date=self.date))
 
 
     def setupDoc(self):
         self.doc = BaseDocTemplate(
             self.filename,
-            pagesize = A4,
+            pagesize = self.param.pageSize,
             leftMargin = 15*mm,
             bottomMargin = 10*mm,
             rightMargin = 20*mm,
@@ -164,10 +148,10 @@ class Invoice(DataMixin):
             ('VALIGN', (0,0), (-1,-1), "BOTTOM")
             ))
         self.param.signaturesTableStyle = TableStyle((
-            ('FONTNAME', (0,0), (0,0), "Arial Bold"),
-            ('FONTNAME', (2,0), (2,0), "Arial Bold"),
-            ('FONTNAME', (1,0), (1,0), "Arial"),
-            ('FONTNAME', (3,0), (3,0), "Arial"),
+            ('FONTNAME', (0,0), (0,0), self.param.boldFont),
+            ('FONTNAME', (2,0), (2,0), self.param.boldFont),
+            ('FONTNAME', (1,0), (1,0), self.param.baseFont),
+            ('FONTNAME', (3,0), (3,0), self.param.baseFont),
             ('ALIGN', (0,0), (0,0), "LEFT"),
             ('ALIGN', (2,0), (2,0), "LEFT"),
             ('ALIGN', (1,0), (1,0), "RIGHT"),
@@ -182,12 +166,12 @@ class Invoice(DataMixin):
             ), parent=base)
         self.param.totalsTableStyle = TableStyle((
             ('TOPPADDING', (0,0), (-1, 0), 3*mm),
-            ('FONTNAME', (0, 0), (-1, -1), "Arial Bold"),
+            ('FONTNAME', (0, 0), (-1, -1), self.param.boldFont),
             ('ALIGN', (1,0), (-1, -1), "RIGHT"),
             ), parent=base)
         self.param.goodsTableStyle = TableStyle(
-            (('FONTNAME', (0,0), (-1,-1), "Arial"),
-            ('FONTNAME', (0,0), (-1,0), "Arial Bold"),
+            (('FONTNAME', (0,0), (-1,-1), self.param.baseFont),
+            ('FONTNAME', (0,0), (-1,0), self.param.boldFont),
             ('FONTSIZE', (0,1), (-1, -1), self.param.minSize),
             ('LEADING', (0,1), (-1, -1), self.param.minSize * 1.2),
             ('ALIGN', (0,0), (-1, 0), "CENTRE"),
@@ -197,7 +181,7 @@ class Invoice(DataMixin):
             ('INNERGRID', (0,0), (-1,-1), 1, self.param.lineColor),
             ('BOX', (0,0), (-1,-1), 2, self.param.lineColor)), parent=base)
         self.param.memberTableStyle = TableStyle((
-                ('FONTNAME',(0,0), (-1,-1), "Arial"),
+                ('FONTNAME',(0,0), (-1,-1), self.param.baseFont),
                 ('VALIGN', (0,0), (0,-1), "TOP"),
                 ('BOTTOMPADDING', (0,0), (-1, 0), 4 * mm),
                 ('ALIGN', (0,0), (0,-1), "LEFT")
@@ -231,8 +215,7 @@ class Invoice(DataMixin):
             text.textLines(name)
             return text
 
-        def writeRequisites(requisites):
-            req = Extract(requisites)
+        def writeRequisites(req):
             c = canvas
             c.saveState()
             c.translate(self.doc.leftMargin, 235*mm)
@@ -265,7 +248,7 @@ class Invoice(DataMixin):
         def writeInvoiceTitle(invoiceNum):
             c = canvas
             c.saveState()
-            c.setFont('Arial Bold', self.param.bigSize)
+            c.setFont(self.param.boldFont, self.param.bigSize)
             c.drawString(x[0], 225*mm, self.templates.invoiceTitle(invoiceNum))
             c.setLineWidth(0.5*mm)
             c.line(x[0], 222*mm, x[-1], 222*mm)
@@ -287,9 +270,9 @@ class Invoice(DataMixin):
 
     def writeMembers(self):
         beneficiaryData = self.templates.memberTemplate(
-                m=Extract(self.data.beneficiary))
+                m=self.data.beneficiary)
         customerData = self.templates.memberTemplate(
-                m=Extract(self.data.customer))
+                m=self.data.customer)
         data = (
                 (u"Поставщик:", Paragraph(beneficiaryData, self.param.normalStyle)),
                 (u"Покупатель:", Paragraph(customerData, self.param.normalStyle))
@@ -321,7 +304,8 @@ class Invoice(DataMixin):
         self.story.append(self.templates.amountTemplate(quantity, due))
         self.story.append(self.templates.spellTotal(due))
 
-    def write(self):
+    def instanceWrite(self):
+        logger.debug("============= writing ===========")
         spacer = Spacer(0, self.param.normalSize)
         self.writeMembers()
         self.story.append(spacer)
