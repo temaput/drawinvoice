@@ -1,17 +1,25 @@
 #set encoding=utf-8
 import unittest
 import logging
+import sys
+from os.path import dirname, pardir, realpath, join
+sys.path.insert(0, realpath(join(dirname(__file__), pardir)))
+testdir = realpath(join(dirname(__file__), 'result'))
+from os import makedirs
+makedirs(testdir)
+
+logger = logging.getLogger(__name__)
+
 from drawinvoice.simpleinvoice import Invoice
 from drawinvoice.sbrfslip import SbrfSlip
 from decimal import Decimal as D
 
-logger = logging.getLogger(__name__)
 
 
 class EmptyInvoice(unittest.TestCase):
     def test(self):
         logger.info("====================%s===================================",self.__class__)
-        invoice = Invoice('emptyInvoice.pdf')
+        invoice = Invoice(join(testdir,'emptyInvoice.pdf'))
         invoice.write()
 
 
@@ -54,7 +62,7 @@ class SimpleInvoice(unittest.TestCase):
     def test(self):
         logger.info("====================%s===================================",self.__class__)
         goods = ((lambda i: (self.item, self.item2)[i % 2])(i) for i in range(100))
-        invoice = Invoice('testInvoice.pdf')
+        invoice = Invoice(join(testdir, 'testInvoice.pdf'))
         invoice.setInvoiceNumber(24)
         invoice.feed(goods = goods)
         invoice.feed(customer=self.customer, beneficiary=self.beneficiary)
@@ -70,7 +78,6 @@ class CalculationsTest(unittest.TestCase):
 
     def test(self):
         logger.info("====================%s===================================",self.__class__)
-        logger.info("=======================================================")
         goods = (self.item for i in range(7))
         invoice = Invoice('/dev/null')
         invoice.feed(goods=goods)
@@ -104,16 +111,14 @@ class SimpleKvit(unittest.TestCase):
             )
     def test(self):
         logger.info("====================%s===================================",self.__class__)
-        logger.info("=======================================================")
-        kvit = SbrfSlip('testKvit.pdf')
+        kvit = SbrfSlip(join(testdir, 'testKvit.pdf'))
         kvit.feed(customer = self.customer, order=self.order, beneficiary=self.beneficiary)
         kvit.write()
 
 class EmptyKvit(unittest.TestCase):
     def test(self):
         logger.info("====================%s===================================",self.__class__)
-        logger.info("=======================================================")
-        kvit = SbrfSlip('testEmptyKvit.pdf')
+        kvit = SbrfSlip(join(testdir, 'testEmptyKvit.pdf'))
         kvit.write()
 
 if __name__ == '__main__':
