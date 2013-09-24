@@ -1,9 +1,13 @@
 #!/usr/bin/env python
-from distutils.core import setup
+from setuptools import setup
 
 
 setup(name='drawinvoice',
         version='0.3.1',
+        packages=['drawinvoice'],
+        package_data={'drawinvoice': ['fonts/*.ttf']},
+        install_requires=['reportlab(>=2.0)', 'pytils', 'babel'],
+        include_package_data=False,
         url='https://github.com/temaput/drawinvoice',
         author="Artem Putilov",
         author_email="putilkin@gmail.com",
@@ -11,9 +15,6 @@ setup(name='drawinvoice',
         long_description=open('README.md').read(),
         keywords="Invoice, Sales Slip",
         license='BSD',
-        packages=['drawinvoice'],
-        package_data={'drawinvoice': ['fonts/*.ttf']},
-        requires=['reportlab(>=2.0)', 'pytils', 'babel'],
         # See http://pypi.python.org/pypi?%3Aaction=list_classifiers
         classifiers=['Environment :: Commercial',
             'Intended Audience :: Developers',
