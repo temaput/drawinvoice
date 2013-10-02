@@ -2,11 +2,12 @@
 import unittest
 import logging
 import sys
-from os.path import dirname, pardir, realpath, join
+from os.path import dirname, pardir, realpath, join, exists
 sys.path.insert(0, realpath(join(dirname(__file__), pardir)))
 testdir = realpath(join(dirname(__file__), 'result'))
 from os import makedirs
-makedirs(testdir)
+if not exists(testdir):
+    makedirs(testdir)
 
 logger = logging.getLogger(__name__)
 

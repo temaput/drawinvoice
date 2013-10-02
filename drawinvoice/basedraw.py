@@ -11,7 +11,7 @@ from reportlab.lib.units import mm
 
 logging.basicConfig(
         format = "%(name)s:%(levelname)s:\t%(message)s",
-        level=logging.DEBUG)
+        level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
 location = lambda x: os.path.join(

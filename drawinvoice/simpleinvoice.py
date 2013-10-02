@@ -261,7 +261,7 @@ class Invoice(BaseDraw, DataMixin):
 #========================================
     def writeSignatures(self):
         manager = self.data.beneficiary.get('manager', '')
-        accountant = manager
+        accountant = self.data.beneficiary.accountant or manager
         signaturesTable = Table(
                 ((u"Руководитель", manager, u"Бухгалтер", accountant),),
                 colWidths = (29*mm, 61*mm, 30*mm, 55*mm),
