@@ -3,7 +3,7 @@ from setuptools import setup
 
 
 setup(name='drawinvoice',
-        version='0.3.1',
+        version='0.3.2',
         packages=['drawinvoice'],
         package_data={'drawinvoice': ['fonts/*.ttf']},
         install_requires=['reportlab>=2.0', 'pytils', 'babel'],

@@ -103,7 +103,7 @@ class SbrfSlip(BaseDraw, DataMixin):
 
         c, y = nextLine(c, y)
         c.drawString(left, y, u'Адрес плательщика')
-        c.setFont(self.param.italicFont, self.param.normalSize)
+        c.setFont(self.param.italicFont, self.param.minSize)
         c.drawString(32 * mm, y, self.data.customer.address)
         c.setFont(self.param.baseFont, self.param.normalSize)
         c.line(32 * mm, y-2, right, y-2)
